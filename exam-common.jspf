@@ -1,0 +1,145 @@
+<%@ page import="java.util.*, java.security.MessageDigest, java.nio.charset.StandardCharsets, java.net.URLEncoder" %>
+<%!
+    public String hashPassword(String input) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    public String esc(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
+    }
+
+    public boolean isLoggedIn(HttpSession session) {
+        return session.getAttribute("authUser") != null;
+    }
+
+    public String currentUser(HttpSession session) {
+        Object u = session.getAttribute("authUser");
+        return u == null ? null : String.valueOf(u);
+    }
+
+    public boolean isAdmin(HttpSession session) {
+        Object role = session.getAttribute("authRole");
+        return role != null && "admin".equals(String.valueOf(role));
+    }
+
+    public Map<String, Object> q(String id, String text, String[] options, int answer) {
+        Map<String, Object> question = new HashMap<String, Object>();
+        question.put("id", id);
+        question.put("text", text);
+        question.put("options", options);
+        question.put("answer", answer);
+        return question;
+    }
+
+    public Map<String, Object> test(String id, String name, String tagline, int durationSec, double passPercent, List<Map<String, Object>> questions) {
+        Map<String, Object> exam = new HashMap<String, Object>();
+        exam.put("id", id);
+        exam.put("name", name);
+        exam.put("tagline", tagline);
+        exam.put("durationSec", durationSec);
+        exam.put("passPercent", passPercent);
+        exam.put("questions", questions);
+        return exam;
+    }
+%>
+<%
+    request.setCharacterEncoding("UTF-8");
+
+    synchronized (application) {
+        if (application.getAttribute("users") == null) {
+            application.setAttribute("users", new HashMap<String, Map<String, String>>());
+        }
+        if (application.getAttribute("attempts") == null) {
+            application.setAttribute("attempts", new ArrayList<Map<String, Object>>());
+        }
+        if (application.getAttribute("testCatalog") == null) {
+            List<Map<String, Object>> catalog = new ArrayList<Map<String, Object>>();
+
+            List<Map<String, Object>> t1 = new ArrayList<Map<String, Object>>();
+            t1.add(q("F1", "Which protocol encrypts website traffic by default?", new String[]{"HTTP", "FTP", "HTTPS", "IMAP"}, 2));
+            t1.add(q("F2", "Which data structure follows Last-In-First-Out order?", new String[]{"Queue", "Stack", "Tree", "Graph"}, 1));
+            t1.add(q("F3", "What does SQL stand for?", new String[]{"Structured Query Language", "Simple Query Logic", "Secure Queue Layer", "System Query Link"}, 0));
+            t1.add(q("F4", "Which Java keyword creates a subclass from a parent class?", new String[]{"extends", "implements", "inherits", "super"}, 0));
+            t1.add(q("F5", "Big-O for binary search on sorted data is", new String[]{"O(n)", "O(log n)", "O(n log n)", "O(1)"}, 1));
+            t1.add(q("F6", "Which HTML tag is used for the largest heading?", new String[]{"<head>", "<h6>", "<h1>", "<header>"}, 2));
+            t1.add(q("F7", "Which SQL clause filters rows before grouping?", new String[]{"HAVING", "ORDER BY", "GROUP BY", "WHERE"}, 3));
+            t1.add(q("F8", "Which of these is a NoSQL database?", new String[]{"MySQL", "PostgreSQL", "MongoDB", "Oracle"}, 2));
+            t1.add(q("F9", "In CSS, which property controls text color?", new String[]{"font-color", "text-color", "color", "foreground"}, 2));
+            t1.add(q("F10", "Which HTTP status means Not Found?", new String[]{"200", "302", "401", "404"}, 3));
+            t1.add(q("F11", "Which command in Git uploads local commits to remote?", new String[]{"git clone", "git pull", "git push", "git merge"}, 2));
+            t1.add(q("F12", "Which one is a strongly typed language?", new String[]{"Java", "HTML", "CSS", "SQL"}, 0));
+            catalog.add(test("FOUND", "Foundations Assessment", "Core software and web fundamentals", 12 * 60, 55.0, t1));
+
+            List<Map<String, Object>> t2 = new ArrayList<Map<String, Object>>();
+            t2.add(q("A1", "Which model architecture powers most modern LLM chat systems?", new String[]{"CNN", "Transformer", "RNN", "SVM"}, 1));
+            t2.add(q("A2", "Precision measures", new String[]{"Correct positives among predicted positives", "Correct positives among all actual positives", "Overall correctness", "Training speed"}, 0));
+            t2.add(q("A3", "Overfitting means", new String[]{"Model performs well on unseen data", "Model memorizes training data and generalizes poorly", "Model uses too little data", "Model has low variance"}, 1));
+            t2.add(q("A4", "Which task is supervised learning?", new String[]{"Clustering customers", "Dimensionality reduction", "Spam classification", "Topic modeling"}, 2));
+            t2.add(q("A5", "Gradient descent updates parameters using", new String[]{"Random guessing", "Loss gradients", "Manual tuning", "Hash maps"}, 1));
+            t2.add(q("A6", "A confusion matrix is used for", new String[]{"Database joins", "Classification evaluation", "Network routing", "Code linting"}, 1));
+            t2.add(q("A7", "Which metric is better for imbalanced binary classes?", new String[]{"Accuracy only", "F1 score", "Epoch count", "Latency"}, 1));
+            t2.add(q("A8", "Tokenization in NLP is", new String[]{"Encrypting text", "Breaking text into units", "Compressing images", "Balancing labels"}, 1));
+            t2.add(q("A9", "ReLU is", new String[]{"A loss function", "An optimizer", "An activation function", "A tokenizer"}, 2));
+            t2.add(q("A10", "Train/validation split helps", new String[]{"Detect generalization", "Speed up hardware", "Avoid using labels", "Remove features"}, 0));
+            catalog.add(test("AI", "AI Systems Readiness", "Applied ML, evaluation and deployment concepts", 10 * 60, 60.0, t2));
+
+            List<Map<String, Object>> t3 = new ArrayList<Map<String, Object>>();
+            t3.add(q("C1", "Which attack injects malicious SQL statements?", new String[]{"DDoS", "XSS", "SQL Injection", "CSRF"}, 2));
+            t3.add(q("C2", "MFA stands for", new String[]{"Managed Firewall Access", "Multi-Factor Authentication", "Master File Allocation", "Main Function API"}, 1));
+            t3.add(q("C3", "Principle of least privilege means", new String[]{"Give all users admin", "Grant minimum required access", "Share credentials", "Disable logging"}, 1));
+            t3.add(q("C4", "Which header reduces XSS risk in browsers?", new String[]{"Content-Security-Policy", "Cache-Control", "ETag", "Accept-Language"}, 0));
+            t3.add(q("C5", "Brute force protection usually includes", new String[]{"Unlimited retries", "Rate limiting and lockout", "Plain text passwords", "Open ports"}, 1));
+            t3.add(q("C6", "Which one is symmetric encryption?", new String[]{"RSA", "ECC", "AES", "DSA"}, 2));
+            t3.add(q("C7", "Phishing primarily targets", new String[]{"Hardware heat", "Human trust", "Compiler speed", "DNS TTL"}, 1));
+            t3.add(q("C8", "Which log is key for incident response?", new String[]{"Authentication logs", "Font logs", "Theme logs", "Cache logos"}, 0));
+            t3.add(q("C9", "HTTPS certificate validation helps prevent", new String[]{"MITM attacks", "Memory leaks", "Race conditions", "Deadlocks"}, 0));
+            t3.add(q("C10", "A secure password should be", new String[]{"Short and reused", "Long and unique", "Only numeric", "Stored in plain text"}, 1));
+            catalog.add(test("CYBER", "Cyber Operations Drill", "Security, authentication and secure web operations", 9 * 60, 65.0, t3));
+
+            application.setAttribute("testCatalog", catalog);
+            application.setAttribute("questionBank", t1);
+        }
+    }
+
+    Map<String, Map<String, String>> users = (Map<String, Map<String, String>>) application.getAttribute("users");
+    List<Map<String, Object>> attempts = (List<Map<String, Object>>) application.getAttribute("attempts");
+    List<Map<String, Object>> testCatalog = (List<Map<String, Object>>) application.getAttribute("testCatalog");
+
+    synchronized (application) {
+        if (!users.containsKey("admin")) {
+            Map<String, String> admin = new HashMap<String, String>();
+            admin.put("fullName", "System Admin");
+            admin.put("username", "admin");
+            admin.put("passwordHash", hashPassword("admin123"));
+            admin.put("createdAt", new Date().toString());
+            admin.put("role", "admin");
+            users.put("admin", admin);
+        }
+    }
+
+    Map<String, Map<String, Object>> testIndex = new HashMap<String, Map<String, Object>>();
+    int totalQuestionsAcrossTests = 0;
+    for (Map<String, Object> t : testCatalog) {
+        String testId = String.valueOf(t.get("id"));
+        testIndex.put(testId, t);
+        List<Map<String, Object>> qs = (List<Map<String, Object>>) t.get("questions");
+        totalQuestionsAcrossTests += qs.size();
+    }
+%>

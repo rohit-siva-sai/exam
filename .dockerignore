@@ -1,0 +1,6 @@
+.runtime/
+.git/
+.gitignore
+*.log
+*.tmp
+*.bak
