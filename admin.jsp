@@ -458,6 +458,15 @@
 
     String msgQ = request.getParameter("msg");
     String errQ = request.getParameter("err");
+    List<String> studentUsernames = new ArrayList<String>();
+    for (Map.Entry<String, Map<String, String>> e : users.entrySet()) {
+        Map<String, String> u = e.getValue();
+        String role = u.get("role") == null ? "student" : u.get("role");
+        if (!"admin".equals(role)) {
+            studentUsernames.add(e.getKey());
+        }
+    }
+    Collections.sort(studentUsernames);
 %>
 <!DOCTYPE html>
 <html>
@@ -645,6 +654,123 @@ Q	DSQ1	What is the amortized complexity of dynamic array append?	O(n)	O(1) avera
             </table>
         </div>
         <p class="text-slate-400 text-sm mt-3">Default admin credentials: <span class="font-mono">admin / admin123</span></p>
+    </section>
+
+    <section class="rounded-2xl border border-cyan-300/25 bg-cyan-500/10 p-5 mt-6">
+        <div class="flex items-center justify-between gap-3">
+            <h2 class="font-display text-2xl">Student Performance Console</h2>
+            <p class="text-sm text-slate-300">Users: <%= studentUsernames.size() %></p>
+        </div>
+
+        <% if (studentUsernames.isEmpty()) { %>
+        <p class="text-slate-300 mt-4">No student accounts yet.</p>
+        <% } else { %>
+        <div class="grid xl:grid-cols-2 gap-4 mt-4">
+            <% for (String studentUsername : studentUsernames) {
+                Map<String, String> student = users.get(studentUsername);
+                String studentName = student.get("fullName");
+                int userAttempts = 0;
+                int totalScore = 0;
+                int totalQuestions = 0;
+                double best = 0.0;
+                double avg = 0.0;
+                Set<String> attemptedTestIds = new HashSet<String>();
+                Map<String, Map<String, Object>> latestByTest = new HashMap<String, Map<String, Object>>();
+                Map<String, Long> latestTs = new HashMap<String, Long>();
+
+                for (Map<String, Object> at : attempts) {
+                    if (studentUsername.equals(String.valueOf(at.get("username")))) {
+                        userAttempts++;
+                        double p = ((Number) at.get("percent")).doubleValue();
+                        avg += p;
+                        if (p > best) {
+                            best = p;
+                        }
+                        totalScore += ((Number) at.get("score")).intValue();
+                        totalQuestions += ((Number) at.get("total")).intValue();
+
+                        String testId = String.valueOf(at.get("testId"));
+                        attemptedTestIds.add(testId);
+                        Long endTs = (Long) at.get("endTs");
+                        Long prev = latestTs.get(testId);
+                        if (prev == null || endTs.longValue() >= prev.longValue()) {
+                            latestTs.put(testId, endTs);
+                            latestByTest.put(testId, at);
+                        }
+                    }
+                }
+                if (userAttempts > 0) {
+                    avg = avg / userAttempts;
+                }
+                double overall = totalQuestions == 0 ? 0.0 : (totalScore * 100.0 / totalQuestions);
+                int completed = attemptedTestIds.size();
+
+                List<Map<String, Object>> orderedUserTests = new ArrayList<Map<String, Object>>();
+                for (Map<String, Object> t : testCatalog) {
+                    String tid = String.valueOf(t.get("id"));
+                    if (!attemptedTestIds.contains(tid)) {
+                        orderedUserTests.add(t);
+                    }
+                }
+                for (Map<String, Object> t : testCatalog) {
+                    String tid = String.valueOf(t.get("id"));
+                    if (attemptedTestIds.contains(tid)) {
+                        orderedUserTests.add(t);
+                    }
+                }
+            %>
+            <article class="rounded-2xl border border-white/15 bg-white/10 backdrop-blur-md p-4">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <p class="font-display text-xl"><%= esc(studentName) %></p>
+                        <p class="text-xs text-slate-300 font-mono"><%= esc(studentUsername) %></p>
+                    </div>
+                    <span class="text-xs uppercase tracking-[0.2em] px-2 py-1 rounded-full border border-cyan-300/40 bg-cyan-500/15 text-cyan-200"><%= completed %>/<%= testCatalog.size() %> tracks</span>
+                </div>
+
+                <div class="grid grid-cols-4 gap-2 mt-4 text-center">
+                    <div class="rounded-lg border border-white/10 bg-slate-900/45 p-2">
+                        <p class="text-[11px] text-slate-400">Attempts</p>
+                        <p class="font-semibold"><%= userAttempts %></p>
+                    </div>
+                    <div class="rounded-lg border border-white/10 bg-slate-900/45 p-2">
+                        <p class="text-[11px] text-slate-400">Overall</p>
+                        <p class="font-semibold"><%= String.format("%.1f", overall) %>%</p>
+                    </div>
+                    <div class="rounded-lg border border-white/10 bg-slate-900/45 p-2">
+                        <p class="text-[11px] text-slate-400">Best</p>
+                        <p class="font-semibold"><%= String.format("%.1f", best) %>%</p>
+                    </div>
+                    <div class="rounded-lg border border-white/10 bg-slate-900/45 p-2">
+                        <p class="text-[11px] text-slate-400">Average</p>
+                        <p class="font-semibold"><%= String.format("%.1f", avg) %>%</p>
+                    </div>
+                </div>
+
+                <p class="text-xs uppercase tracking-[0.2em] text-slate-300 mt-4">Track Queue (Unattempted first)</p>
+                <div class="grid gap-2 mt-2">
+                    <% for (Map<String, Object> t : orderedUserTests) {
+                        String tid = String.valueOf(t.get("id"));
+                        boolean attempted = attemptedTestIds.contains(tid);
+                        Map<String, Object> latest = latestByTest.get(tid);
+                    %>
+                    <div class="rounded-lg border border-white/10 bg-slate-900/35 p-2 flex items-center justify-between gap-2">
+                        <div>
+                            <p class="text-sm font-semibold"><%= esc(String.valueOf(t.get("name"))) %></p>
+                            <p class="text-[11px] text-slate-400 font-mono"><%= esc(tid) %></p>
+                        </div>
+                        <% if (attempted) { %>
+                        <span class="text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border border-emerald-300/40 bg-emerald-500/15 text-emerald-200">Attempted <%= String.format("%.1f", ((Number) latest.get("percent")).doubleValue()) %>%</span>
+                        <% } else { %>
+                        <span class="text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border border-amber-300/40 bg-amber-500/15 text-amber-200">Unattempted</span>
+                        <% } %>
+                    </div>
+                    <% } %>
+                </div>
+            </article>
+            <% } %>
+        </div>
+        <% } %>
     </section>
 </div>
 <script>

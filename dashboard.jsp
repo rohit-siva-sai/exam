@@ -13,6 +13,11 @@
     int totalAttempts = 0;
     double bestPercent = 0;
     double avgPercent = 0;
+    int totalScoreEarned = 0;
+    int totalQuestionsAnswered = 0;
+    Set<String> attemptedTests = new HashSet<String>();
+    Map<String, Map<String, Object>> latestAttemptByTest = new HashMap<String, Map<String, Object>>();
+    Map<String, Long> latestAttemptTsByTest = new HashMap<String, Long>();
 
     for (Map<String, Object> at : attempts) {
         if (username.equals(String.valueOf(at.get("username")))) {
@@ -22,10 +27,38 @@
             if (p > bestPercent) {
                 bestPercent = p;
             }
+            totalScoreEarned += ((Number) at.get("score")).intValue();
+            totalQuestionsAnswered += ((Number) at.get("total")).intValue();
+
+            String testId = String.valueOf(at.get("testId"));
+            attemptedTests.add(testId);
+            Long endTs = (Long) at.get("endTs");
+            Long prevTs = latestAttemptTsByTest.get(testId);
+            if (prevTs == null || endTs.longValue() >= prevTs.longValue()) {
+                latestAttemptTsByTest.put(testId, endTs);
+                latestAttemptByTest.put(testId, at);
+            }
         }
     }
     if (totalAttempts > 0) {
         avgPercent = avgPercent / totalAttempts;
+    }
+    double overallPercent = totalQuestionsAnswered == 0 ? 0.0 : (totalScoreEarned * 100.0 / totalQuestionsAnswered);
+    int completedTracks = attemptedTests.size();
+    double completionPercent = testCatalog.isEmpty() ? 0.0 : (completedTracks * 100.0 / testCatalog.size());
+
+    List<Map<String, Object>> orderedTests = new ArrayList<Map<String, Object>>();
+    for (Map<String, Object> t : testCatalog) {
+        String testId = String.valueOf(t.get("id"));
+        if (!attemptedTests.contains(testId)) {
+            orderedTests.add(t);
+        }
+    }
+    for (Map<String, Object> t : testCatalog) {
+        String testId = String.valueOf(t.get("id"));
+        if (attemptedTests.contains(testId)) {
+            orderedTests.add(t);
+        }
     }
 %>
 <!DOCTYPE html>
@@ -70,7 +103,7 @@
             </div>
         </div>
 
-        <div class="grid md:grid-cols-4 gap-3 mt-6">
+        <div class="grid md:grid-cols-5 gap-3 mt-6">
             <div class="rounded-xl border border-cyan-400/30 bg-cyan-500/10 p-4">
                 <p class="text-xs uppercase tracking-[0.18em] text-cyan-100">Tracks</p>
                 <p class="text-3xl font-semibold mt-1"><%= testCatalog.size() %></p>
@@ -88,6 +121,11 @@
                 <p class="text-3xl font-semibold mt-1"><%= String.format("%.1f", bestPercent) %>%</p>
                 <p class="text-xs text-violet-100/80 mt-1">avg <%= String.format("%.1f", avgPercent) %>%</p>
             </div>
+            <div class="rounded-xl border border-amber-400/30 bg-amber-500/10 p-4">
+                <p class="text-xs uppercase tracking-[0.18em] text-amber-100">Overall</p>
+                <p class="text-3xl font-semibold mt-1"><%= String.format("%.1f", overallPercent) %>%</p>
+                <p class="text-xs text-amber-100/80 mt-1"><%= completedTracks %>/<%= testCatalog.size() %> tracks (<%= String.format("%.0f", completionPercent) %>%)</p>
+            </div>
         </div>
     </header>
 
@@ -98,16 +136,25 @@
         </div>
 
         <div class="grid lg:grid-cols-3 gap-4">
-            <% for (Map<String, Object> t : testCatalog) {
+            <% for (Map<String, Object> t : orderedTests) {
                 String testId = String.valueOf(t.get("id"));
                 String testName = String.valueOf(t.get("name"));
                 String tagline = String.valueOf(t.get("tagline"));
                 int duration = ((Number) t.get("durationSec")).intValue();
                 double passPercent = ((Number) t.get("passPercent")).doubleValue();
                 List<Map<String, Object>> qs = (List<Map<String, Object>>) t.get("questions");
+                Map<String, Object> latest = latestAttemptByTest.get(testId);
+                boolean attempted = latest != null;
             %>
             <article class="rounded-2xl border border-white/15 bg-white/10 backdrop-blur-md p-5 shadow-xl shadow-slate-950/30">
-                <p class="text-xs uppercase tracking-[0.22em] text-cyan-200"><%= esc(testId) %></p>
+                <div class="flex items-center justify-between gap-2">
+                    <p class="text-xs uppercase tracking-[0.22em] text-cyan-200"><%= esc(testId) %></p>
+                    <% if (attempted) { %>
+                    <span class="text-[10px] uppercase tracking-[0.2em] rounded-full px-2 py-1 border border-emerald-300/40 bg-emerald-500/15 text-emerald-200">Attempted</span>
+                    <% } else { %>
+                    <span class="text-[10px] uppercase tracking-[0.2em] rounded-full px-2 py-1 border border-amber-300/40 bg-amber-500/15 text-amber-200">Unattempted</span>
+                    <% } %>
+                </div>
                 <h3 class="font-display text-2xl mt-2"><%= esc(testName) %></h3>
                 <p class="text-slate-300 mt-2 min-h-12"><%= esc(tagline) %></p>
                 <div class="grid grid-cols-3 gap-2 mt-4 text-center">
@@ -124,7 +171,12 @@
                         <p class="font-semibold"><%= String.format("%.0f", passPercent) %>%</p>
                     </div>
                 </div>
-                <a href="take-exam.jsp?test=<%= URLEncoder.encode(testId, "UTF-8") %>" class="mt-5 inline-block w-full text-center rounded-xl py-2 bg-gradient-to-r from-cyan-400 to-emerald-400 text-slate-900 font-semibold hover:brightness-110">Launch Track</a>
+                <% if (attempted) { %>
+                <p class="mt-3 text-xs text-slate-300">Latest: <%= String.format("%.1f", ((Number) latest.get("percent")).doubleValue()) %>% (<%= ((Boolean) latest.get("passed")) ? "PASS" : "FAIL" %>)</p>
+                <% } else { %>
+                <p class="mt-3 text-xs text-slate-300">Priority: not attempted yet</p>
+                <% } %>
+                <a href="take-exam.jsp?test=<%= URLEncoder.encode(testId, "UTF-8") %>" class="mt-3 inline-block w-full text-center rounded-xl py-2 bg-gradient-to-r from-cyan-400 to-emerald-400 text-slate-900 font-semibold hover:brightness-110"><%= attempted ? "Retake Track" : "Start Track" %></a>
             </article>
             <% } %>
         </div>
